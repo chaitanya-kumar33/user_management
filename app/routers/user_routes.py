@@ -161,7 +161,9 @@ async def create_user(user: UserCreate, request: Request, db: AsyncSession = Dep
         last_login_at=created_user.last_login_at,
         created_at=created_user.created_at,
         updated_at=created_user.updated_at,
-        links=create_user_links(created_user.id, request)
+        links=create_user_links(created_user.id, request),
+        linkedin_profile_url=created_user.linkedin_profile_url,
+        github_profile_url=created_user.github_profile_url,
     )
 
 

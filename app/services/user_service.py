@@ -48,6 +48,14 @@ class UserService:
     @classmethod
     async def get_by_email(cls, session: AsyncSession, email: str) -> Optional[User]:
         return await cls._fetch_user(session, email=email)
+    
+    
+    @classmethod
+    async def get_by_role(cls, session: AsyncSession, role: str, skip: int = 0, limit: int = 10) -> List[User]:
+        query = select(User).where(User.role == role).offset(skip).limit(limit)
+        result = await session.execute(query)
+        return result.scalars().all()
+
 
     @classmethod
     async def create(cls, session: AsyncSession, user_data: Dict[str, str], email_service: EmailService) -> Optional[User]:

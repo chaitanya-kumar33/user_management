@@ -24,7 +24,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
 from app.dependencies import get_current_user, get_db, get_email_service, require_role
+from app.models.user_model import User
 from app.schemas.pagination_schema import EnhancedPagination
 from app.schemas.token_schema import TokenResponse
 from app.schemas.user_schemas import LoginRequest, UserBase, UserCreate, UserListResponse, UserResponse, UserUpdate
@@ -283,3 +285,50 @@ async def get_user_by_nickname(nickname: str, request: Request, db: AsyncSession
         updated_at=user.updated_at,
         links=create_user_links(user.id, request)  
     )
+
+
+@router.get("/users/role/{role}", tags=["User Management Feature (Admin Role)"])
+async def get_users_by_role(
+    role: str,
+    request: Request,
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role(["ADMIN"]))
+):
+    role = role.upper()
+    try:
+        # Count total users by role
+        total_users_query = select(func.count()).select_from(User).where(User.role == role)
+        result = await db.execute(total_users_query)
+        total_users = result.scalar()
+
+        if total_users == 0:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No users with this role")
+
+        # Calculate total pages
+        total_pages = (total_users + limit - 1) // limit
+
+        # Get users by role with pagination
+        users_query = select(User).where(User.role == role).offset(skip * limit).limit(limit)
+        users_result = await db.execute(users_query)
+        users = users_result.scalars().all()
+
+    except HTTPException as http_exc:
+        raise http_exc
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid user role provided")
+
+    user_responses = [UserResponse.model_validate(user) for user in users]
+    pagination_links = generate_pagination_links(request, skip, limit, total_users)
+
+    # Manually constructing the response to include total_pages as UserListResponse does not include total pages.
+    response_data = {
+        "items": user_responses,
+        "total": total_users,
+        "page": skip + 1,
+        "size": len(user_responses),
+        "total_pages": total_pages
+    }
+
+    return response_data

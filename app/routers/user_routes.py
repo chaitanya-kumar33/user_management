@@ -178,7 +178,7 @@ async def list_users(
     current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))
 ):
     total_users = await UserService.count(db)
-    users = await UserService.list_users(db, skip, limit)
+    users = await UserService.list_users(db, skip * limit, limit)
 
     user_responses = [
         UserResponse.model_validate(user) for user in users
@@ -190,7 +190,7 @@ async def list_users(
     return UserListResponse(
         items=user_responses,
         total=total_users,
-        page=skip // limit + 1,
+        page=skip + 1,
         size=len(user_responses),
         links=pagination_links  # Ensure you have appropriate logic to create these links
     )

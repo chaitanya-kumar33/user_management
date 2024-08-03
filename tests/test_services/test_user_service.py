@@ -5,6 +5,7 @@ from app.dependencies import get_settings
 from app.models.user_model import User, UserRole
 from app.services.user_service import UserService
 from app.utils.nickname_gen import generate_nickname
+from datetime import datetime, timedelta, timezone
 
 pytestmark = pytest.mark.asyncio
 
@@ -353,4 +354,142 @@ async def test_get_users_by_role_pagination(db_session, email_service, async_cli
     assert retrieved_users["total"] == 3
     assert retrieved_users["page"] == 2
     assert retrieved_users["size"] == 1
+    assert retrieved_users["total_pages"] == 2
+
+
+# Test fetching users by created_at when users exist (Admin Access)
+async def test_get_users_by_created_at_exists(db_session, email_service, async_client, admin_token):
+    # Create users with the default role (ANONYMOUS)
+    user_data_1 = {
+        "nickname": generate_nickname(),
+        "email": "user1@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=5)
+    }
+
+    user_data_2 = {
+        "nickname": generate_nickname(),
+        "email": "user2@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=3)
+    }
+
+    # Create the users in the database using the UserService
+    user1 = await UserService.create(db_session, user_data_1, email_service)
+    user2 = await UserService.create(db_session, user_data_2, email_service)
+
+    # Attempt to fetch users by created_at using the admin token
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-12-31?skip=0&limit=10",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    # Print the response JSON for debugging
+    retrieved_users = response.json()  
+    assert retrieved_users is not None
+    assert retrieved_users["total"] == 3
+    assert retrieved_users["page"] == 1
+    assert retrieved_users["size"] == 3
+    assert retrieved_users["total_pages"] == 1
+
+# Test unauthorized access by manager for created_at endpoint
+async def test_get_users_by_created_at_unauthorized(db_session, email_service, async_client, manager_token):
+    # Create users with the default role (ANONYMOUS)
+    user_data_1 = {
+        "nickname": generate_nickname(),
+        "email": "user1@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=5)
+    }
+
+    user_data_2 = {
+        "nickname": generate_nickname(),
+        "email": "user2@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=3)
+    }
+
+    # Create the users in the database using the UserService
+    await UserService.create(db_session, user_data_1, email_service)
+    await UserService.create(db_session, user_data_2, email_service)
+
+    # Attempt to fetch users by created_at using the manager token
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-12-31?skip=0&limit=10",
+        headers={"Authorization": f"Bearer {manager_token}"}
+    )
+
+    # Asserting responses
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Operation not permitted"
+
+# Test fetching users by created_at when no users are found
+async def test_get_users_by_created_at_no_users_found(db_session, email_service, async_client, admin_token):
+    # Create a user with a different created_at to ensure no users in the given range
+    user_data = {
+        "nickname": generate_nickname(),
+        "email": "admin_user@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ADMIN.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=365)
+    }
+
+    # Create the user in the database using the UserService
+    await UserService.create(db_session, user_data, email_service)
+
+    # Attempt to fetch users by created_at for a range that has no users
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-01-02?skip=0&limit=10",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    # Asserting responses
+    assert response.status_code == 404
+    assert response.json()["detail"] == "No users found within the specified date range"
+
+# Test pagination when fetching users by created_at (Admin Access)
+async def test_get_users_by_created_at_pagination(db_session, email_service, async_client, admin_token):
+    # Create three users with different created_at dates
+    for i in range(3):
+        user_data = {
+            "nickname": generate_nickname(),
+            "email": f"user{i}@example.com",
+            "password": "ValidPassword123!",
+            "role": UserRole.ANONYMOUS.name,
+            "created_at": datetime.now(timezone.utc) - timedelta(days=(5 - i))
+        }
+        await UserService.create(db_session, user_data, email_service)
+
+    # Attempt to fetch users by created_at with pagination (first page)
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-12-31?skip=0&limit=2",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    # Asserting responses for the first page
+    retrieved_users = response.json()
+    assert retrieved_users is not None
+    assert len(retrieved_users["items"]) == 2
+    assert retrieved_users["total"] == 4
+    assert retrieved_users["page"] == 1
+    assert retrieved_users["size"] == 2
+    assert retrieved_users["total_pages"] == 2
+
+    # Attempt to fetch the second page
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-12-31?skip=1&limit=2",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    # Asserting responses for the second page
+    retrieved_users = response.json()
+    assert retrieved_users is not None
+    assert len(retrieved_users["items"]) == 2
+    assert retrieved_users["total"] == 4
+    assert retrieved_users["page"] == 2
+    assert retrieved_users["size"] == 2
     assert retrieved_users["total_pages"] == 2

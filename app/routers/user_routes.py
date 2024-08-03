@@ -19,12 +19,12 @@ Key Highlights:
 """
 
 from builtins import dict, int, len, str
-from datetime import timedelta
+from datetime import timedelta, datetime
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, select
+from sqlalchemy import func, select, and_
 from app.dependencies import get_current_user, get_db, get_email_service, require_role
 from app.models.user_model import User
 from app.schemas.pagination_schema import EnhancedPagination
@@ -329,6 +329,59 @@ async def get_users_by_role(
         "page": skip + 1,
         "size": len(user_responses),
         "total_pages": total_pages
+    }
+
+    return response_data
+
+
+@router.get("/users/created/{start_date}/{end_date}", tags=["User Management Feature (Admin Role)"])
+async def get_users_by_created_at(
+    start_date: str,
+    end_date: str,
+    request: Request,
+    order: str = Query(... , description="Sort order of the results by creation date", enum=["Created (earliest)", "Created (latest)"]),
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role(["ADMIN"]))
+):
+    """
+    Endpoint to fetch users created within a specified date range.
+
+    Parameters:
+    - start_date: The start date for the filter range (YYYY-MM-DD format).
+    - end_date: The end date for the filter range (YYYY-MM-DD format).
+    - order: Sort order of the results by creation date (asc for ascending, desc for descending).
+    - skip: Number of records to skip for pagination.
+    - limit: Maximum number of records to return for pagination.
+    """
+    try:
+        start_date_parsed = datetime.strptime(start_date, "%Y-%m-%d")
+        end_date_parsed = datetime.strptime(end_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid date format. Use YYYY-MM-DD format.")
+
+    users = await UserService.get_users_by_created_at(db, start_date_parsed, end_date_parsed, order, skip, limit)
+
+    if not users:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No users found within the specified date range")
+
+    count_query = select(func.count()).select_from(User).where(and_(User.created_at >= start_date_parsed, User.created_at <= end_date_parsed))
+    total_users_result = await db.execute(count_query)
+    total_users = total_users_result.scalar()
+
+    total_pages = (total_users + limit - 1) // limit
+
+    user_responses = [UserResponse.model_validate(user) for user in users]
+    pagination_links = generate_pagination_links(request, skip, limit, total_users)
+
+    # Construct the final response with pagination details
+    response_data = {
+        "items": user_responses,
+        "total": total_users,
+        "page": skip + 1,
+        "size": len(user_responses),
+        "total_pages": total_pages,
     }
 
     return response_data

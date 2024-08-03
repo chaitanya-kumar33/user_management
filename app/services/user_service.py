@@ -48,8 +48,7 @@ class UserService:
     @classmethod
     async def get_by_email(cls, session: AsyncSession, email: str) -> Optional[User]:
         return await cls._fetch_user(session, email=email)
-    
-    
+
     @classmethod
     async def get_by_role(cls, session: AsyncSession, role: str, skip: int = 0, limit: int = 10) -> List[User]:
         query = select(User).where(User.role == role).offset(skip).limit(limit)
@@ -58,11 +57,21 @@ class UserService:
 
     @classmethod
     async def get_users_by_created_at(
-        cls, session: AsyncSession, start_date: datetime, end_date: datetime, skip: int = 0, limit: int = 10) -> List[User]:
-        query = select(User).where(and_(User.created_at >= start_date, User.created_at <= end_date)).offset(skip * limit).limit(limit)
+        cls, session: AsyncSession, start_date: datetime, end_date: datetime, order: str, skip: int = 0, limit: int = 10) -> List[User]:
+        order_by = User.created_at.asc() if order == "Created (earliest)" else User.created_at.desc()
+        query = select(User).where(and_(User.created_at >= start_date, User.created_at <= end_date)).order_by(order_by).offset(skip * limit).limit(limit)
         result = await session.execute(query)
         return result.scalars().all()
-    
+
+    @classmethod
+    async def search_users(cls, session: AsyncSession, field: str, value: str, skip: int = 0, limit: int = 10) -> List[User]:
+        if field not in ["first_name", "last_name", "nickname"]:
+            return []
+
+        query = select(User).where(getattr(User, field).ilike(f"%{value}%")).offset(skip * limit).limit(limit)
+        result = await session.execute(query)
+        return result.scalars().all()
+
 
     @classmethod
     async def create(cls, session: AsyncSession, user_data: Dict[str, str], email_service: EmailService) -> Optional[User]:
@@ -84,11 +93,9 @@ class UserService:
             if new_user.role == UserRole.ADMIN:
                 new_user.email_verified = True
             new_user.verification_token = generate_verification_token()
-
             session.add(new_user)
             await session.commit()
             await email_service.send_verification_email(new_user)
-            
             return new_user
         except ValidationError as e:
             logger.error(f"Validation error during user creation: {e}")
@@ -184,7 +191,7 @@ class UserService:
         if user and user.verification_token == token:
             user.email_verified = True
             user.verification_token = None  # Clear the token once used
-            if user.role == UserRole.ANONYMOUS: 
+            if user.role == UserRole.ANONYMOUS:
                 user.role = UserRole.AUTHENTICATED
             session.add(user)
             await session.commit()

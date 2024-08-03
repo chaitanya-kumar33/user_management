@@ -21,10 +21,11 @@ Key Highlights:
 from builtins import dict, int, len, str
 from datetime import timedelta, datetime
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Request, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status, Request
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, and_
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.dependencies import get_current_user, get_db, get_email_service, require_role
 from app.models.user_model import User
 from app.schemas.pagination_schema import EnhancedPagination
@@ -109,20 +110,18 @@ async def update_user(user_id: UUID, user_update: UserUpdate, request: Request, 
         updated_at=updated_user.updated_at,
         links=create_user_links(updated_user.id, request)
     )
-
-
-@router.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT, name="delete_user", tags=["User Management Requires (Admin or Manager Roles)"])
+@router.delete("/users/{user_id}", status_code=status.HTTP_200_OK, name="delete_user", tags=["User Management Requires (Admin or Manager Roles)"])
 async def delete_user(user_id: UUID, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN", "MANAGER"]))):
     """
     Delete a user by their ID.
 
     - **user_id**: UUID of the user to delete.
     """
+    user = await UserService.get_by_id(db, user_id)
     success = await UserService.delete(db, user_id)
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
-
+    return JSONResponse(content={"detail": f"User '{user_id}' with nickname '{user.nickname}' deleted"}, status_code=status.HTTP_200_OK)
 
 
 @router.post("/users/", response_model=UserResponse, status_code=status.HTTP_201_CREATED, tags=["User Management Requires (Admin or Manager Roles)"], name="create_user")
@@ -160,12 +159,12 @@ async def create_user(user: UserCreate, request: Request, db: AsyncSession = Dep
         nickname=created_user.nickname,
         email=created_user.email,
         role=created_user.role,
+        linkedin_profile_url=created_user.linkedin_profile_url,
+        github_profile_url=created_user.github_profile_url,
         last_login_at=created_user.last_login_at,
         created_at=created_user.created_at,
         updated_at=created_user.updated_at,
-        links=create_user_links(created_user.id, request),
-        linkedin_profile_url=created_user.linkedin_profile_url,
-        github_profile_url=created_user.github_profile_url,
+        links=create_user_links(created_user.id, request)
     )
 
 
@@ -250,7 +249,6 @@ async def verify_email(user_id: UUID, token: str, db: AsyncSession = Depends(get
         return {"message": "Email verified successfully"}
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
 
-
 @router.get("/users/nickname/{nickname}", response_model=UserResponse, name="get_user_by_nickname", tags=["User Management Feature (Admin Role)"])
 async def get_user_by_nickname(nickname: str, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN"]))):
     """
@@ -286,6 +284,40 @@ async def get_user_by_nickname(nickname: str, request: Request, db: AsyncSession
         links=create_user_links(user.id, request)  
     )
 
+@router.get("/users/email/{email}", response_model=UserResponse, name="get_user_by_email", tags=["User Management Feature (Admin Role)"])
+async def get_user_by_email(email: str, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN"]))):
+    """
+    Endpoint to fetch a user by their email.
+
+    Utilizes the UserService to query the database asynchronously for the user and constructs a response
+    model that includes the user's details along with HATEOAS links for possible next actions.
+
+    Args:
+        email: Email of the user to fetch.
+        request: The request object, used to generate full URLs in the response.
+        db: Dependency that provides an AsyncSession for database access.
+        token: The OAuth2 access token obtained through OAuth2PasswordBearer dependency.
+    """
+    user = await UserService.get_by_email(db, email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return UserResponse.model_construct(
+        id=user.id,
+        nickname=user.nickname,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        bio=user.bio,
+        profile_picture_url=user.profile_picture_url,
+        github_profile_url=user.github_profile_url,
+        linkedin_profile_url=user.linkedin_profile_url,
+        role=user.role,
+        email=user.email,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        links=create_user_links(user.id, request)  
+    )
 
 @router.get("/users/role/{role}", tags=["User Management Feature (Admin Role)"])
 async def get_users_by_role(
@@ -333,13 +365,12 @@ async def get_users_by_role(
 
     return response_data
 
-
 @router.get("/users/created/{start_date}/{end_date}", tags=["User Management Feature (Admin Role)"])
 async def get_users_by_created_at(
     start_date: str,
     end_date: str,
     request: Request,
-    order: str = Query(... , description="Sort order of the results by creation date ", enum=["Created (earliest)", "Created (latest)"]),
+    order: str = Query(... , description="Sort order of the results by creation date", enum=["Created (earliest)", "Created (latest)"]),
     skip: int = 0,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
@@ -376,6 +407,60 @@ async def get_users_by_created_at(
     pagination_links = generate_pagination_links(request, skip, limit, total_users)
 
     # Construct the final response with pagination details
+    response_data = {
+        "items": user_responses,
+        "total": total_users,
+        "page": skip + 1,
+        "size": len(user_responses),
+        "total_pages": total_pages,
+    }
+
+    return response_data
+
+@router.get("/users/search/", tags=["User Management Feature (Admin Role)"])
+async def search_users(
+    request: Request,
+    field: str = Query(..., description="The field to search by", enum=["first_name", "last_name", "nickname"]),
+    value: str = Query(..., description="The value to search for"),
+    skip: int = 0,
+    limit: int = 10,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_role(["ADMIN"]))
+):
+    """
+    Endpoint to search users by a specific field.
+
+    Parameters:
+    - field: The field to search by (first_name, last_name, nickname).
+    - value: The value to search for.
+    - skip: Number of records to skip for pagination.
+    - limit: Maximum number of records to return for pagination.
+    """
+    try:
+        # Dynamically build the filter expression based on the field
+        filter_expr = getattr(User, field).ilike(f"%{value}%")
+    except AttributeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid search field: {field}")
+
+    total_query = select(func.count()).select_from(User).where(filter_expr)
+    total_result = await db.execute(total_query)
+    total_users = total_result.scalar()
+
+    if total_users == 0:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"No users found for {field} = {value}")
+
+    total_pages = (total_users + limit - 1) // limit
+
+    if skip * limit >= total_users:
+        raise HTTPException(status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE, detail="Requested page is out of range")
+
+    users_query = select(User).where(filter_expr).offset(skip * limit).limit(limit)
+    users_result = await db.execute(users_query)
+    users = users_result.scalars().all()
+
+    user_responses = [UserResponse.model_validate(user) for user in users]
+    pagination_links = generate_pagination_links(request, skip, limit, total_users)
+
     response_data = {
         "items": user_responses,
         "total": total_users,

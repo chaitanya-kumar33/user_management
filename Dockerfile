@@ -11,7 +11,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /myapp
 
-# Update system and specifically upgrade libc-bin to the required security patch version
+# Update system and specifically upgrade libc-bin to the latest version
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     libpq-dev \

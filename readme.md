@@ -53,8 +53,6 @@ Don't forget to always have a working main branch deploying to Docker at all tim
 Let's embark on this epic coding adventure together and conquer the world of software engineering! You've got this, coding rockstars! 🚀🌟✨
 
 
-
-
 # Dockerhub
 <img width="788" alt="image" src="https://github.com/user-attachments/assets/2a7e7714-cba1-4a0d-9851-42d4c530ea48">
 

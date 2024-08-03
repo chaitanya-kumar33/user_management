@@ -247,3 +247,39 @@ async def verify_email(user_id: UUID, token: str, db: AsyncSession = Depends(get
     if await UserService.verify_email_with_token(db, user_id, token):
         return {"message": "Email verified successfully"}
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired verification token")
+
+
+@router.get("/users/nickname/{nickname}", response_model=UserResponse, name="get_user_by_nickname", tags=["User Management Feature (Admin Role)"])
+async def get_user_by_nickname(nickname: str, request: Request, db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme), current_user: dict = Depends(require_role(["ADMIN"]))):
+    """
+    Endpoint to fetch a user by their nickname.
+
+    Utilizes the UserService to query the database asynchronously for the user and constructs a response
+    model that includes the user's details along with HATEOAS links for possible next actions.
+
+    Args:
+        nickname: Nickname of the user to fetch.
+        request: The request object, used to generate full URLs in the response.
+        db: Dependency that provides an AsyncSession for database access.
+        token: The OAuth2 access token obtained through OAuth2PasswordBearer dependency.
+    """
+    user = await UserService.get_by_nickname(db, nickname)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    return UserResponse.model_construct(
+        id=user.id,
+        nickname=user.nickname,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        bio=user.bio,
+        profile_picture_url=user.profile_picture_url,
+        github_profile_url=user.github_profile_url,
+        linkedin_profile_url=user.linkedin_profile_url,
+        role=user.role,
+        email=user.email,
+        last_login_at=user.last_login_at,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        links=create_user_links(user.id, request)  
+    )

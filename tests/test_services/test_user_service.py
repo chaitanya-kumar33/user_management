@@ -180,3 +180,17 @@ async def test_unlock_user_account(db_session, locked_user):
     assert unlocked, "The account should be unlocked"
     refreshed_user = await UserService.get_by_id(db_session, locked_user.id)
     assert not refreshed_user.is_locked, "The user should no longer be locked"
+
+
+# Test fetching a user by nickname when the user exists
+async def test_get_user_by_nickname_exists(db_session, user):
+    retrieved_user = await UserService.get_by_nickname(db_session, user.nickname)
+    assert retrieved_user is not None
+    assert retrieved_user.nickname == user.nickname
+    assert retrieved_user.id == user.id
+
+# Test fetching a user by nickname when the user does not exist
+async def test_get_user_by_nickname_does_not_exist(db_session):
+    non_existent_nickname = "non_existent_nickname"
+    retrieved_user = await UserService.get_by_nickname(db_session, non_existent_nickname)
+    assert retrieved_user is None

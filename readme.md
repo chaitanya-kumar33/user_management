@@ -51,3 +51,13 @@ Remember, it's more important to make something work reliably and be reasonably 
 Don't forget to always have a working main branch deploying to Docker at all times. If you always have a working main branch, you will never be in jeopardy of receiving a very disappointing grade :-). Keep that main branch shining bright!
 
 Let's embark on this epic coding adventure together and conquer the world of software engineering! You've got this, coding rockstars! 🚀🌟✨
+
+
+
+
+# Dockerhub
+<img width="788" alt="image" src="https://github.com/user-attachments/assets/2a7e7714-cba1-4a0d-9851-42d4c530ea48">
+
+
+# Github Actions
+<img width="922" alt="image" src="https://github.com/user-attachments/assets/3f60e9c7-2de8-4b6a-9c09-3b506169fef5">

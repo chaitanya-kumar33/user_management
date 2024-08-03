@@ -21,7 +21,7 @@ Key Highlights:
 from builtins import dict, int, len, str
 from datetime import timedelta, datetime
 from uuid import UUID
-from fastapi import APIRouter, Depends, HTTPException, Response, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Response, status, Request, Query
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import func, select, and_
@@ -339,7 +339,7 @@ async def get_users_by_created_at(
     start_date: str,
     end_date: str,
     request: Request,
-    order: str = Query(... , description="Sort order of the results by creation date", enum=["Created (earliest)", "Created (latest)"]),
+    order: str = Query(... , description="Sort order of the results by creation date ", enum=["Created (earliest)", "Created (latest)"]),
     skip: int = 0,
     limit: int = 10,
     db: AsyncSession = Depends(get_db),

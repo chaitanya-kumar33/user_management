@@ -493,3 +493,37 @@ async def test_get_users_by_created_at_pagination(db_session, email_service, asy
     assert retrieved_users["page"] == 2
     assert retrieved_users["size"] == 2
     assert retrieved_users["total_pages"] == 2
+
+
+# Test fetching users by created_at in descending order (Admin Access)
+async def test_get_users_by_created_at_descending_order(db_session, email_service, async_client, admin_token):
+    # Create two users with different created_at dates
+    user_data_1 = {
+        "nickname": generate_nickname(),
+        "email": "user1@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=2)
+    }
+    user_data_2 = {
+        "nickname": generate_nickname(),
+        "email": "user2@example.com",
+        "password": "ValidPassword123!",
+        "role": UserRole.ANONYMOUS.name,
+        "created_at": datetime.now(timezone.utc) - timedelta(days=1)
+    }
+    await UserService.create(db_session, user_data_1, email_service)
+    await UserService.create(db_session, user_data_2, email_service)
+
+    # Attempt to fetch users by created_at in descending order
+    response = await async_client.get(
+        "/users/created/2024-01-01/2024-12-31?order=Created (latest)&skip=0&limit=10",
+        headers={"Authorization": f"Bearer {admin_token}"}
+    )
+
+    # Asserting responses
+    retrieved_users = response.json()
+    assert retrieved_users is not None
+    assert len(retrieved_users["items"]) == 3
+    assert retrieved_users["items"][0]["email"] == "user2@example.com"
+    assert retrieved_users["items"][1]["email"] == "user1@example.com"
